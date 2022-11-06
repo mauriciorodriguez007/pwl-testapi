@@ -14,8 +14,5 @@ FROM alpine:3
 
 
 COPY --from=builder /pwl-testapi/pwl-testapi /usr/local/bin/
-
-RUN adduser -D certmanager
-USER certmanager
-
+EXPOSE  7777
 ENTRYPOINT ["/usr/local/bin/pwl-testapi"]
