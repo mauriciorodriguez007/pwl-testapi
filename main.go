@@ -2,128 +2,78 @@ package main
 
 import (
 	"fmt"
+	"github.com/Microsoft/go-winio"
 	"log"
 	"net"
 	"os"
 	"time"
-
-	//"github.com/Microsoft/go-winio"
-	"github.com/Microsoft/go-winio"
-	"gopkg.in/natefinch/npipe.v2"
 )
 
+var PipeConReader net.Conn
+var PipeConWriter net.Conn
+
 func main() {
-	go WritePipe("My message")
+	//go WritePipe("My message")
 	//go ExampleDial()
+	requestPath := `\\.\pipe\CPE_REQUEST`
+	responsePath := `\\.\pipe\CPE_RESPONSE`
 
-	// pipePath := `\\.\pipe\mypipename`
+	PipeConWriter = NamedPipeServer(requestPath, "writer")
+	PipeConReader = NamedPipeServer(responsePath, "reader")
+	
+	go PipeReader(PipeConReader)	
+	time.Sleep(10 * time.Second)
 
-	// if err := os.RemoveAll(pipePath); err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// pc := &winio.PipeConfig{
-	// 	SecurityDescriptor: "D:P(A;;GA;;;AU)",
-	// 	InputBufferSize:    512,
-	// 	OutputBufferSize:   512,
-	// 	MessageMode: true,
-	// }
-
-	// l, err := winio.ListenPipe(pipePath, pc)
-
-	// if err != nil {
-	// 	log.Fatal("listen error:", err)
-	// }
-	// defer l.Close()
-
-	// for {
-	// 	fmt.Printf("waiting on message")
-	// 	conn, err := l.Accept()
-	// 	if err != nil {
-	// 		log.Fatal("accept error:", err)
-	// 	}
-	// 	fmt.Println("got a connection - dispatching to handler")
-	// 	go printMsgServer(conn)
-	// }
-	//ConnectPipe()
+	n, err := PipeConWriter.Write([]byte("this is my message 23423 2434 234 234 234 234 234 2343 2423 423 432432432 4"))
+	if err != nil {
+		fmt.Printf("\n%s PipeConWriter.write failed : %s\n",time.Now(),err)
+		return
+	}
+	fmt.Printf("\n%s PipeConWriter Snd: %d bytes",time.Now(),n)
 
 	wait := make(chan string)
 	<-wait
-	//fmt.Printf("exiting main function")
+	fmt.Printf("exiting main function")
 }
 
-// Use Dial to connect to a server and read messages from it.
-func ExampleDial() {
-	pipePath := "\\\\.\\pipe\\DIGI3A"
-	//npipe.OpenFile()
-	//conn, err := npipe.(pipePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
-	conn, err := npipe.Dial(pipePath)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-		// handle error
-	}
+func PipeReader(c net.Conn) {
+	fmt.Printf("\n%s PipeReader client CONNECTED [%s]",time.Now() ,c.RemoteAddr().Network())
+	buf := make([]byte, 4196)
 	for {
-		if _, err := fmt.Fprintln(conn, "Hi server!"); err != nil {
-			// handle error
-			log.Fatalf("error writing  file: %v", err)
-		}
-	}
-
-	// r := bufio.NewReader(conn)
-	// msg, err := r.ReadString('\n')
-	// if err != nil {
-	// 	// handle eror
-	// }
-	//	fmt.Println(msg)
-}
-
-func WritePipe(msg string) {
-	fmt.Printf("waiting 2 seconds")
-	time.Sleep(2 * time.Second)
-	pipePath := `\\.\pipe\DIGI3A`
-	fmt.Printf("flag: %d", os.ModeNamedPipe)
-	//f, err := os.OpenFile(pipePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
-	f,err := winio.DialPipe(pipePath,nil)
-	//f, err := os.OpenFile(pipePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0777)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	buffer := []byte{0x30, 0x31, 0x33, 0x34}
-	for {
-		fmt.Printf("\nwriting to pipe")
-		//f.WriteString("message from client\n")
-		b, err := f.Write(buffer)
-		fmt.Printf("\n wrote bytes: %d", b)
-		if err != nil {
-			fmt.Printf("\n error writing error: %s", err)
-		}
-
-		time.Sleep(1 * time.Second)
-	}
-	f.Close()
-	fmt.Println("done writing to pipe")
-}
-
-func printMsgServer(c net.Conn) {
-	fmt.Println("in the handler")
-	log.Printf("Client connected [%s]", c.RemoteAddr().Network())
-
-	buf := make([]byte, 512)
-	for true {
-		fmt.Printf("read blocking...")
 		n, err := c.Read(buf)
-		fmt.Printf("read %d bytes\n", n)
+		fmt.Printf("\n nPipeReader rcvd: %d bytes\n", n)
 		if err != nil {
 			str := string(buf)
-			fmt.Printf("got message: %s\n", str)
+			fmt.Printf(".read failed error: %s\n", str)
+			return
 		}
 	}
-
-}
-func ConnectPipe() {
-
 }
 
-func ReadPipe() {
+// SERVER role - it listens for 'clients' to connet to it
+func NamedPipeServer(pipePath string, role string) net.Conn {
 
+	me := fmt.Sprintf("NamedPipeServer(%s)",pipePath)
+	fmt.Printf("\n%s %s listening role: %s", time.Now(),me,role)
+	if err := os.RemoveAll(pipePath); err != nil {
+		log.Fatal(err)
+	}
+	pc := &winio.PipeConfig{
+		SecurityDescriptor: "D:P(A;;GA;;;AU)",
+		InputBufferSize:    512,
+		OutputBufferSize:   512,
+		MessageMode:        true,
+	}
+	l, err := winio.ListenPipe(pipePath, pc)
+	if err != nil {
+		log.Fatal("listen error:", err)
+	}
+	defer l.Close()
+	fmt.Printf("\n%s %s waiting for client", time.Now(),me)
+	conn, err := l.Accept()
+	if err != nil {
+		log.Fatal("\n%s %s Accept failed err: ", time.Now(),me,err)
+	}
+	fmt.Printf("\n%s %s received new connection", time.Now(),me)
+	return conn
 }
